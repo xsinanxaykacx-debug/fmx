@@ -606,5 +606,3 @@ export function simulateMatch(
   });
   return { homeScore, awayScore, events, homeStats, awayStats, homePossessionMinutes, awayPossessionMinutes };
 }
-
-[executed on device: CASPER2026 (6aef6c8a-4d92-4cfd-8a24-7178f9b87d0f)]

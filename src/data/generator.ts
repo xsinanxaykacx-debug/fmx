@@ -262,5 +262,3 @@ export function generateLeague(season: number = 1, existingTeamIds?: string[]): 
   const league = { id: uid('league'), name: 'Süper Lig', season, teamIds, fixtures };
   return { league, teams: teamsRecord };
 }
-
-[executed on device: CASPER2026 (6aef6c8a-4d92-4cfd-8a24-7178f9b87d0f)]
