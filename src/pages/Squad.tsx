@@ -17,7 +17,7 @@ const POSITION_ORDER: Record<Position, number> = {
 };
 
 export function Squad() {
-  const { teams, myTeamId } = useGameStore();
+  const { teams, myTeamId, day } = useGameStore();
   const [search, setSearch] = useState('');
   const [posFilter, setPosFilter] = useState<string>('ALL');
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -171,7 +171,7 @@ export function Squad() {
               >
                 <td className="px-4 py-3 font-medium text-slate-200 group-hover:text-white transition-colors">
                   {player.name}
-                  {player.injuredUntilDay !== null && <span className="ml-2 text-xs text-red-500 font-bold">SAKAT</span>}
+                  {player.injuredUntilDay != null && player.injuredUntilDay > day && <span className="ml-2 text-xs text-red-500 font-bold">SAKAT</span>}
                 </td>
                 <td className="px-4 py-3 text-center text-slate-400 font-mono text-xs">{player.position}</td>
                 <td className="px-4 py-3 text-center text-slate-400">{player.age}</td>

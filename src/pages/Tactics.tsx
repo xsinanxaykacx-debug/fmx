@@ -1,6 +1,7 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { calculateOverall } from '@/data/generator';
+import { getMatchdayLineup, isPlayerAvailableForMatch } from '@/utils/lineup';
 import type { Formation, Player, Position } from '@/types/game';
 import { Save, AlertCircle } from 'lucide-react';
 
@@ -72,7 +73,7 @@ function getFamiliarityScore(playerPos: Position, slotPos: Position, altPosition
 }
 
 export function Tactics() {
-  const { teams, myTeamId } = useGameStore();
+  const { teams, myTeamId, day } = useGameStore();
   const myTeam = myTeamId ? teams[myTeamId] : null;
   
   const pitchRef = useRef<HTMLDivElement>(null);
@@ -89,11 +90,35 @@ export function Tactics() {
     }
   }, [myTeam?.tactics.formation]);
 
-  if (!myTeam) return <div className="p-6 text-slate-400">Takım bulunamadı.</div>;
+  const formation = myTeam?.tactics.formation || '4-4-2';
+  const matchdayLineup = myTeam ? getMatchdayLineup(myTeam, day) : [];
+  const startingXI = myTeam ? matchdayLineup.map(id => myTeam.players.find(p => p.id === id)).filter(Boolean) as Player[] : [];
+  const bench = myTeam ? myTeam.players
+    .filter(player => isPlayerAvailableForMatch(player, day) && !matchdayLineup.includes(player.id))
+    .sort((a, b) => calculateOverall(b) - calculateOverall(a))
+    .slice(0, 7) : [];
 
-  const formation = myTeam.tactics.formation || '4-4-2';
-  const startingXI = myTeam.tactics.lineup.map(id => myTeam.players.find(p => p.id === id)).filter(Boolean) as Player[];
-  const bench = myTeam.players.filter(p => !myTeam.tactics.lineup.includes(p.id));
+  useEffect(() => {
+    if (!myTeam || !myTeamId || matchdayLineup.length !== 11 || matchdayLineup.join('|') === myTeam.tactics.lineup.join('|')) return;
+    if (matchdayLineup.length === 11 && matchdayLineup.join('|') !== myTeam.tactics.lineup.join('|')) {
+      useGameStore.setState(state => {
+        if (!myTeamId) return state;
+        const currentTeam = state.teams[myTeamId];
+        if (!currentTeam) return state;
+        return {
+          teams: {
+            ...state.teams,
+            [myTeamId]: {
+              ...currentTeam,
+              tactics: { ...currentTeam.tactics, lineup: matchdayLineup },
+            },
+          },
+        };
+      });
+    }
+  }, [myTeam, myTeamId, day]);
+
+  if (!myTeam) return <div className="p-6 text-slate-400">Takım bulunamadı.</div>;
 
   // --- SAHA İÇİ SÜRÜKLEME ---
   const handlePitchPointerDown = (e: React.PointerEvent, index: number) => {
@@ -155,6 +180,11 @@ export function Tactics() {
 
   // --- YEDEKTEN SAHAYA SÜRÜKLEME ---
   const handleBenchDragStart = (e: React.DragEvent, benchPlayerId: string) => {
+    const player = myTeam.players.find(item => item.id === benchPlayerId);
+    if (!player || !isPlayerAvailableForMatch(player, day)) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('benchPlayerId', benchPlayerId);
   };
 
@@ -168,9 +198,15 @@ export function Tactics() {
     const benchPlayerId = e.dataTransfer.getData('benchPlayerId');
     if (!benchPlayerId) return;
 
-    const currentLineup = [...myTeam.tactics.lineup];
+    const incomingPlayer = myTeam.players.find(player => player.id === benchPlayerId);
+    if (!incomingPlayer || !isPlayerAvailableForMatch(incomingPlayer, day)) {
+      alert('Sakatlığı devam eden oyuncu ilk 11’e alınamaz.');
+      return;
+    }
+
+    const currentLineup = [...matchdayLineup];
     const playerToRemoveId = currentLineup[targetIndex];
-    if (!playerToRemoveId) return;
+    if (!playerToRemoveId || currentLineup.includes(benchPlayerId)) return;
 
     currentLineup[targetIndex] = benchPlayerId;
 

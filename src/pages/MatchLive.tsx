@@ -1,7 +1,9 @@
 ﻿import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { simulateMatch } from '@/engine/matchEngine';
-import type { MatchEvent, MatchFixture, Player, Formation } from '@/types/game';
+import { calculateOverall } from '@/data/generator';
+import { getMatchdayLineup, isPlayerAvailableForMatch } from '@/utils/lineup';
+import type { MatchEvent, MatchFixture, Player, Formation, Team } from '@/types/game';
 import { Play, Pause, ArrowLeft, Trophy, AlertTriangle } from 'lucide-react';
 
 const DEFAULT_FORMATIONS: Record<Formation, { x: number, y: number }[]> = {
@@ -20,7 +22,7 @@ const DEFAULT_FORMATIONS: Record<Formation, { x: number, y: number }[]> = {
 };
 
 export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFinish: () => void }) {
-  const { teams, myTeamId } = useGameStore();
+  const { teams, myTeamId, day } = useGameStore();
   const homeTeam = teams[fixture.homeTeamId];
   const awayTeam = teams[fixture.awayTeamId];
   
@@ -63,11 +65,40 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
 
   useEffect(() => {
     if (!homeTeam || !awayTeam || matchInitializedRef.current) return;
-    const result = simulateMatch(homeTeam, awayTeam);
+
+    const homeLineup = getMatchdayLineup(homeTeam, day);
+    const awayLineup = getMatchdayLineup(awayTeam, day);
+    const prepareTeam = (team: Team, lineup: string[]) => ({
+      ...team,
+      players: team.players.map(player =>
+        player.injuredUntilDay != null && player.injuredUntilDay <= day
+          ? { ...player, injuredUntilDay: null }
+          : player
+      ),
+      tactics: { ...team.tactics, lineup },
+    });
+    const preparedHome = prepareTeam(homeTeam, homeLineup);
+    const preparedAway = prepareTeam(awayTeam, awayLineup);
+    const homeNeedsUpdate = homeLineup.join('|') !== homeTeam.tactics.lineup.join('|') ||
+      homeTeam.players.some(player => player.injuredUntilDay != null && player.injuredUntilDay <= day);
+    const awayNeedsUpdate = awayLineup.join('|') !== awayTeam.tactics.lineup.join('|') ||
+      awayTeam.players.some(player => player.injuredUntilDay != null && player.injuredUntilDay <= day);
+
+    if (homeNeedsUpdate || awayNeedsUpdate) {
+      useGameStore.setState(state => ({
+        teams: {
+          ...state.teams,
+          [homeTeam.id]: preparedHome,
+          [awayTeam.id]: preparedAway,
+        },
+      }));
+    }
+
+    const result = simulateMatch(preparedHome, preparedAway);
     fullResultRef.current = result;
     allEventsRef.current = result.events;
     matchInitializedRef.current = true;
-  }, [homeTeam, awayTeam]);
+  }, [homeTeam, awayTeam, day]);
 
   // Zamanlayıcı
   useEffect(() => {
@@ -135,11 +166,10 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
     }
   });
 
-    const userBench = userTeam ? userTeam.players.filter(p => 
-    !userTeam.tactics.lineup.includes(p.id) && 
-    !subbedOut.has(p.id) && 
-    p.injuredUntilDay == null
-  ) : [];
+    const userBench = userTeam ? userTeam.players
+    .filter(p => !userTeam.tactics.lineup.includes(p.id) && !subbedOut.has(p.id) && isPlayerAvailableForMatch(p, day))
+    .sort((a, b) => calculateOverall(b) - calculateOverall(a))
+    .slice(0, 7) : [];
 
   // Sürükleme
   const handlePointerDown = (e: React.PointerEvent, index: number) => {
@@ -227,6 +257,10 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
 
     const outPlayer = userTeam?.players.find(p => p.id === outPlayerId);
     const inPlayer = userTeam?.players.find(p => p.id === inPlayerId);
+    if (!inPlayer || !isPlayerAvailableForMatch(inPlayer, day) || userTeam?.tactics.lineup.includes(inPlayerId)) {
+      alert('Sakatlığı devam eden veya kadroda bulunan oyuncu oyuna alınamaz.');
+      return;
+    }
 
     useGameStore.setState((state) => {
       const newTeams = { ...state.teams };
