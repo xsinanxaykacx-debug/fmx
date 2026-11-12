@@ -1,5 +1,8 @@
+
+
 import type { Attributes, League, MatchFixture, Player, Position, Team, TeamTactics, Formation } from '@/types/game';
 import { FIRST_NAMES_TR, LAST_NAMES_TR, FIRST_NAMES_FOREIGN, LAST_NAMES_FOREIGN, NATIONALITIES } from './names';
+import { LIG1_2026 } from './lig1_2026';
 
 export function createRng(seed: number) {
   let s = seed >>> 0;
@@ -14,7 +17,9 @@ const rand = (min: number, max: number) => Math.floor(rng() * (max - min + 1)) +
 const pick = <T,>(arr: T[]): T => arr[Math.floor(rng() * arr.length)]!;
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
 
-export const TEAM_TEMPLATES = [
+export interface TeamTemplate { name: string; short: string; city: string; color: string; stadium: string; rep: number; logoUrl?: string; }
+
+export const TEAM_TEMPLATES: TeamTemplate[] = [
   { name: 'İstanbul Kartalları', short: 'KAR', city: 'İstanbul', color: '#0ea5e9', stadium: 'Kartal Arena', rep: 18 },
   { name: 'Ankara Bozkartları', short: 'BOZ', city: 'Ankara', color: '#dc2626', stadium: 'Bozkurt Stadyumu', rep: 17 },
   { name: 'İzmir Fırtınası', short: 'FIR', city: 'İzmir', color: '#16a34a', stadium: 'Fırtına Park', rep: 16 },
@@ -39,7 +44,7 @@ const SQUAD_DISTRIBUTION = [
   { pos: 'GK', count: 2 }, { pos: 'CB', count: 3 }, { pos: 'LB', count: 1 }, { pos: 'RB', count: 1 },
   { pos: 'DM', count: 2 }, { pos: 'CM', count: 2 }, { pos: 'AM', count: 2 },
   { pos: 'LW', count: 2 }, { pos: 'RW', count: 2 }, { pos: 'ST', count: 2 },
-];
+] as const;
 
 function pickNationality(): string {
   const totalWeight = NATIONALITIES.reduce((s, n) => s + n.weight, 0);
@@ -146,12 +151,15 @@ export function generatePlayer(
 
   return {
     id: forcedId ?? uid('p'),
-    name, age, nationality, position, altPositions, attributes,
+    name, age, nationality, position, altPositions,
+    shirtNumber: rand(1, 99),
+    attributes,
     condition: rand(88, 100),
     morale: rand(50, 95),
     wage, value, teamId,
     form: 5.5 + rng() * 2,
     injuredUntilDay: null,
+    suspendedUntilDay: null,
     stats: { goals: 0, assists: 0, appearances: 0, yellowCards: 0, redCards: 0 },
   };
 }
@@ -179,7 +187,7 @@ function generateDefaultTactics(players: Player[]): TeamTactics {
   return { formation, lineup, tempo: 'normal', pressing: 'normal', mentality: 'balanced' };
 }
 
-export function generateTeam(template: typeof TEAM_TEMPLATES[number]): Team {
+export function generateTeam(template: TeamTemplate, tier: 1 | 2 = 1): Team {
   const id = uid('team');
   const players: Player[] = [];
   for (const { pos, count } of SQUAD_DISTRIBUTION) {
@@ -187,6 +195,14 @@ export function generateTeam(template: typeof TEAM_TEMPLATES[number]): Team {
     for (let i = 0; i < actual; i++) {
       players.push(generatePlayer(id, pos, template.rep));
     }
+  }
+  // Takım içinde forma numaraları benzersiz olsun.
+  const usedNumbers = new Set<number>();
+  for (const player of players) {
+    let number = rand(1, 99);
+    while (usedNumbers.has(number)) number = rand(1, 99);
+    usedNumbers.add(number);
+    player.shirtNumber = number;
   }
   const tactics = generateDefaultTactics(players);
   return {
@@ -196,6 +212,8 @@ export function generateTeam(template: typeof TEAM_TEMPLATES[number]): Team {
     city: template.city,
     color: template.color,
     stadium: template.stadium,
+    logoUrl: template.logoUrl,
+    tier,
     reputation: template.rep,
     balance: template.rep * 5_000_000,
     players, tactics,
@@ -249,16 +267,135 @@ export function generateFixtures(teamIds: string[], _season: number): MatchFixtu
   return fixtures;
 }
 
-export function generateLeague(season: number = 1, existingTeamIds?: string[]): { league: League, teams: Record<string, Team> } {
+function statToAttribute(stats: Record<string, number>, keys: string[], fallback: number): number {
+  const values = keys.map(key => stats[key]).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (values.length === 0) return fallback;
+  return Math.max(1, Math.min(20, Math.round(values.reduce((sum, value) => sum + value, 0) / values.length / 5)));
+}
+
+function generateOfficialAttributes(data: typeof import('./superLig2026').SUPER_LIG_2026[number]['players'][number], reputation: number): Attributes {
+  const stats = data.rating?.stats;
+  if (stats) {
+    const fallback = Math.max(5, Math.min(17, Math.round(6 + reputation * 0.55)));
+    return {
+      passing: statToAttribute(stats, ['shortPassing', 'longPassing', 'pas'], fallback),
+      shooting: statToAttribute(stats, ['finishing', 'shotPower', 'sho'], fallback),
+      dribbling: statToAttribute(stats, ['ballControl', 'dribbling', 'dri'], fallback),
+      tackling: statToAttribute(stats, ['standingTackle', 'slidingTackle', 'def'], fallback),
+      heading: statToAttribute(stats, ['headingAccuracy'], fallback),
+      technique: statToAttribute(stats, ['ballControl'], fallback),
+      vision: statToAttribute(stats, ['vision'], fallback),
+      positioning: statToAttribute(stats, ['positioning', 'defensiveAwareness'], fallback),
+      decisions: statToAttribute(stats, ['reactions'], fallback),
+      workRate: statToAttribute(stats, ['stamina'], fallback),
+      aggression: statToAttribute(stats, ['aggression'], fallback),
+      composure: statToAttribute(stats, ['composure'], fallback),
+      pace: statToAttribute(stats, ['acceleration', 'sprintSpeed', 'pac'], fallback),
+      stamina: statToAttribute(stats, ['stamina'], fallback),
+      strength: statToAttribute(stats, ['strength'], fallback),
+      agility: statToAttribute(stats, ['agility'], fallback),
+      goalkeeping: statToAttribute(stats, ['gkHandling', 'gkDiving', 'gkPositioning'], data.position === 'GK' ? fallback : 2),
+      reflexes: statToAttribute(stats, ['gkReflexes'], data.position === 'GK' ? fallback : 2),
+    };
+  }
+
+  const seed = data.id.split('').reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 7);
+  const random = createRng(seed);
+  const ageFactor = data.age == null ? 0 : data.age < 21 ? -1 : data.age > 32 ? -1 : 0;
+  const base = Math.max(5, Math.min(17, Math.round(6 + reputation * 0.55 + ageFactor)));
+  const weights = POSITION_WEIGHTS[data.position];
+  const make = (key: keyof Attributes) => Math.max(1, Math.min(20, base + (weights[key] ?? 0) + Math.floor(random() * 5) - 2));
+  return {
+    passing: make('passing'), shooting: make('shooting'), dribbling: make('dribbling'),
+    tackling: make('tackling'), heading: make('heading'), technique: make('technique'),
+    vision: make('vision'), positioning: make('positioning'), decisions: make('decisions'),
+    workRate: make('workRate'), aggression: make('aggression'), composure: make('composure'),
+    pace: make('pace'), stamina: make('stamina'), strength: make('strength'), agility: make('agility'),
+    goalkeeping: data.position === 'GK' ? make('goalkeeping') : 2,
+    reflexes: data.position === 'GK' ? make('reflexes') : 2,
+  };
+}
+
+function generateOfficialTeam(data: typeof import('./superLig2026').SUPER_LIG_2026[number]): Team {
+  const players: Player[] = data.players.map(playerData => {
+    const attributes = generateOfficialAttributes(playerData, data.reputation);
+    const overall = calculateOverall({ attributes, position: playerData.position } as Player);
+    const ageMultiplier = playerData.age == null ? 1 : playerData.age <= 21 ? 1.8 : playerData.age <= 25 ? 1.4 : playerData.age <= 29 ? 1 : playerData.age <= 32 ? 0.6 : 0.3;
+    const value = Math.max(100_000, Math.round(Math.pow(Math.max(1, overall - 30), 3) * 100 * ageMultiplier));
+    const wage = Math.max(10_000, Math.round((value * 0.003) / 52));
+    return {
+      id: playerData.id,
+      name: playerData.name,
+      age: playerData.age,
+      nationality: playerData.nationality,
+      position: playerData.position,
+      altPositions: playerData.altPositions,
+      shirtNumber: playerData.number,
+      photoUrl: playerData.photoUrl,
+      positionEstimated: playerData.positionEstimated,
+      ratingSource: playerData.rating?.source ?? 'Oyun içi scout tahmini',
+      attributes,
+      condition: 95,
+      morale: 70,
+      wage,
+      value,
+      teamId: data.id,
+      form: 6.5,
+      injuredUntilDay: null,
+      suspendedUntilDay: null,
+      stats: { goals: 0, assists: 0, appearances: 0, yellowCards: 0, redCards: 0 },
+    };
+  });
+
+  return {
+    id: data.id,
+    tier: 1,
+    name: data.name,
+    shortName: data.shortName,
+    city: data.city,
+    color: data.color,
+    stadium: data.stadium,
+    logoUrl: data.logoUrl,
+    reputation: data.reputation,
+    balance: data.reputation * 5_000_000,
+    players,
+    tactics: generateDefaultTactics(players),
+    stats: { played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, points: 0 },
+  };
+}
+
+export function generateLeague(
+  season: number = 1,
+  existingTeamIds?: string[],
+  tier: 1 | 2 = 1,
+  officialSuperLigData?: typeof import('./superLig2026').SUPER_LIG_2026,
+): { league: League, teams: Record<string, Team> } {
+  const useOfficialSquads = tier === 1 && season === 1 && !existingTeamIds && !!officialSuperLigData;
   const teamsArray = existingTeamIds
     ? []
-    : TEAM_TEMPLATES.map(generateTeam);
+    : tier === 2
+      ? LIG1_2026.map(template => generateTeam(template, 2))
+      : useOfficialSquads
+        ? officialSuperLigData!.map(generateOfficialTeam)
+        : TEAM_TEMPLATES.map(template => generateTeam(template, 1));
   const teamsRecord: Record<string, Team> = {};
   teamsArray.forEach(t => { teamsRecord[t.id] = t; });
-  
+
   const teamIds = existingTeamIds ? [...existingTeamIds] : teamsArray.map(t => t.id);
   const fixtures = generateFixtures(teamIds, season);
-  
-  const league = { id: uid('league'), name: 'Süper Lig', season, teamIds, fixtures };
+  const startYear = 2026 + season - 1;
+  const seasonLabel = `${startYear}/${String(startYear + 1).slice(-2)}`;
+  const league: League = {
+    id: uid('league'),
+    name: tier === 1 ? 'Süper Lig' : '1. Lig',
+    tier,
+    season,
+    seasonLabel,
+    teamIds,
+    fixtures,
+  };
   return { league, teams: teamsRecord };
 }
+
+
+

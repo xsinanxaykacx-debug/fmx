@@ -15,10 +15,12 @@ import type { MatchFixture } from '@/types/game';
 export default function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [activeMatch, setActiveMatch] = useState<MatchFixture | null>(null);
-  const { initialized, myTeamId, league } = useGameStore();
+  const { initialized, myTeamId, teams, leagues } = useGameStore();
+  const myTeam = myTeamId ? teams[myTeamId] : null;
+  const activeLeague = myTeam ? leagues[myTeam.tier ?? 1] : null;
 
   // Eğer oyun başlamamışsa veya takım/lig verisi yoksa StartScreen göster
-  if (!initialized || !myTeamId || !league) {
+  if (!initialized || !myTeamId || !activeLeague) {
     return <StartScreen />;
   }
 

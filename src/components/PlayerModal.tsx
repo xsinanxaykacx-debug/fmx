@@ -1,4 +1,7 @@
-﻿import { X, TrendingUp } from 'lucide-react';
+
+
+import { X } from 'lucide-react';
+import { useGameStore } from '@/store/useGameStore';
 import type { Player } from '@/types/game';
 import { calculateOverall } from '@/data/generator';
 
@@ -11,6 +14,7 @@ const ATTR_GROUPS = {
 
 export function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
   const overall = calculateOverall(player);
+  const day = useGameStore(state => state.day);
   
   const getAttrColor = (val: number) => {
     if (val >= 16) return 'text-emerald-400 font-bold';
@@ -24,11 +28,17 @@ export function PlayerModal({ player, onClose }: { player: Player; onClose: () =
       <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="bg-slate-800 p-6 flex justify-between items-start border-b border-slate-700">
+          {player.photoUrl && <img src={player.photoUrl} alt={player.name} className="w-20 h-20 rounded-lg object-cover bg-slate-900" />}
           <div>
-            <h2 className="text-2xl font-bold text-white">{player.name}</h2>
+            <h2 className="text-2xl font-bold text-white break-words">{player.shirtNumber ? `#${player.shirtNumber} ` : ''}{player.name}</h2>
             <p className="text-slate-400 text-sm mt-1">
-              {player.position} • {player.age} yaş • {player.nationality}
+              {player.position}{player.positionEstimated ? '*' : ''} • {player.age ?? '—'} yaş • {player.nationality}
             </p>
+            {player.positionEstimated && <p className="text-amber-400 text-xs mt-1">Mevki tahmini</p>}
+            {player.suspendedUntilDay != null && player.suspendedUntilDay >= day && (
+              <p className="text-orange-400 text-xs mt-1">{'Cezal\u0131 (G\u00FCn '}{player.suspendedUntilDay}{')'}</p>
+            )}
+            <p className="text-slate-500 text-xs mt-1">{player.ratingSource}</p>
           </div>
           <div className="flex flex-col items-center">
             <div className="w-14 h-14 bg-slate-900 rounded-full flex items-center justify-center border-2 border-emerald-500">
@@ -85,3 +95,6 @@ export function PlayerModal({ player, onClose }: { player: Player; onClose: () =
     </div>
   );
 }
+
+
+

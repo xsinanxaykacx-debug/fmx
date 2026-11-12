@@ -51,6 +51,20 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+
+export function computeConditionAtMinute(
+  baseCondition: number,
+  stamina: number,
+  workRate: number,
+  minutesPlayed: number,
+): number {
+  const safeStamina = clamp(stamina, 1, 20);
+  const safeWorkRate = clamp(workRate, 1, 20);
+  const conditionLoss = (Math.max(0, minutesPlayed) / 90) *
+    (6 + (20 - safeStamina) * 0.18 + (20 - safeWorkRate) * 0.06);
+  return Math.max(25, baseCondition - conditionLoss);
+}
+
 function pickWeighted(players: Player[], weight: (player: Player) => number): Player | null {
   if (!players.length) return null;
   const weights = players.map(player => Math.max(0.1, weight(player)));
@@ -255,6 +269,9 @@ export function simulateMatch(
   events: MatchEvent[];
   homeStats: MatchStats;
   awayStats: MatchStats;
+  homePossessionMinutes: number;
+  awayPossessionMinutes: number;
+  playerConditionsByMinute: Record<string, number[]>;
 } {
   const startMinute = clamp(options.startMinute ?? 0, 0, 90);
   const priorEvents = options.priorEvents ?? [];
@@ -597,6 +614,39 @@ export function simulateMatch(
     }
   }
 
+  // Maç içi kondisyon çizelgesi: yedekler baþlangýç kondisyonunu korur.
+  const playerConditionsByMinute: Record<string, number[]> = {};
+  const buildConditionTimeline = (team: Team) => {
+    const teamEvents = [...priorEvents, ...events].filter(event => event.teamId === team.id);
+    const entryMinutes = new Map<string, number>();
+    const exitMinutes = new Map<string, number>();
+    team.tactics.lineup.forEach(id => entryMinutes.set(id, 0));
+    teamEvents.forEach(event => {
+      if (event.type === 'substitution') {
+        const incomingId = event.playerInId ?? event.assisterId;
+        const outgoingId = event.playerOutId ?? event.playerId;
+        if (incomingId) entryMinutes.set(incomingId, event.minute);
+        if (outgoingId) {
+          if (!entryMinutes.has(outgoingId)) entryMinutes.set(outgoingId, 0);
+          exitMinutes.set(outgoingId, event.minute);
+        }
+      } else if ((event.type === 'red' || event.type === 'injury') && event.playerId) {
+        exitMinutes.set(event.playerId, event.minute);
+      }
+    });
+    team.players.forEach(player => {
+      const baseCondition = player.condition ?? 100;
+      const enteredAt = entryMinutes.get(player.id);
+      const exitedAt = exitMinutes.get(player.id);
+      playerConditionsByMinute[player.id] = Array.from({ length: 91 }, (_, currentMinute) => {
+        if (enteredAt == null || currentMinute < enteredAt) return baseCondition;
+        const lastMinute = exitedAt == null ? currentMinute : Math.min(currentMinute, exitedAt);
+        return computeConditionAtMinute(baseCondition, player.attributes.stamina, player.attributes.workRate, Math.max(0, lastMinute - enteredAt));
+      });
+    });
+  };
+  buildConditionTimeline(homeTeam);
+  buildConditionTimeline(awayTeam);
   const playedMinutes = 90;
   homeStats.possession = Math.round(homePossessionMinutes / Math.max(1, playedMinutes) * 100);
   awayStats.possession = 100 - homeStats.possession;
@@ -604,5 +654,5 @@ export function simulateMatch(
     minute: 90, type: 'fulltime',
     text: `ðŸ MaÃ§ sona erdi! SonuÃ§: ${homeTeam.name} ${homeScore} - ${awayScore} ${awayTeam.name}`,
   });
-  return { homeScore, awayScore, events, homeStats, awayStats, homePossessionMinutes, awayPossessionMinutes };
+  return { homeScore, awayScore, events, homeStats, awayStats, homePossessionMinutes, awayPossessionMinutes, playerConditionsByMinute };
 }

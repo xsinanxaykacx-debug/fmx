@@ -1,4 +1,6 @@
-﻿import { useState, useMemo } from 'react';
+
+import { getTableName } from '@/utils/formatName';
+import { useState, useMemo } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { PlayerModal } from '@/components/PlayerModal';
 import { calculateOverall } from '@/data/generator';
@@ -57,7 +59,7 @@ export function Squad() {
         const orderB = POSITION_ORDER[b.position] ?? 99;
         // Mevki aynıysa Reyting'e göre sırala (daha iyisi üstte)
         if (orderA === orderB) {
-          return calculateOverall(b) - calculateOverall(a);
+          return b.overall - a.overall;
         }
         return sortConfig.direction === 'asc' ? orderA - orderB : orderB - orderA;
       }
@@ -170,11 +172,12 @@ export function Squad() {
                 className="hover:bg-slate-800/50 cursor-pointer transition-colors group"
               >
                 <td className="px-4 py-3 font-medium text-slate-200 group-hover:text-white transition-colors">
-                  {player.name}
+                  <span className="text-slate-500 font-mono text-xs mr-2">#{player.shirtNumber ?? '—'}</span><span title={player.name}>{getTableName(player.name)}</span>{player.positionEstimated && <span className="ml-1 text-amber-500" title="Mevki tahmini">*</span>}
                   {player.injuredUntilDay != null && player.injuredUntilDay > day && <span className="ml-2 text-xs text-red-500 font-bold">SAKAT</span>}
+                  {player.suspendedUntilDay != null && player.suspendedUntilDay >= day && <span className="ml-2 text-xs text-orange-500 font-bold">CEZALI</span>}
                 </td>
-                <td className="px-4 py-3 text-center text-slate-400 font-mono text-xs">{player.position}</td>
-                <td className="px-4 py-3 text-center text-slate-400">{player.age}</td>
+                <td className="px-4 py-3 text-center text-slate-400 font-mono text-xs">{player.position}{player.positionEstimated ? '*' : ''}</td>
+                <td className="px-4 py-3 text-center text-slate-400">{player.age ?? '—'}</td>
                 <td className="px-4 py-3 text-center text-slate-300 font-mono">{player.stats.appearances}</td>
                 <td className="px-4 py-3 text-center text-slate-300 font-mono">{player.stats.goals}</td>
                 <td className="px-4 py-3 text-center text-slate-300 font-mono">{player.stats.assists}</td>
@@ -207,3 +210,5 @@ export function Squad() {
     </div>
   );
 }
+
+

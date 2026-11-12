@@ -1,9 +1,10 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { getShortName } from '@/utils/formatName';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { simulateMatch } from '@/engine/matchEngine';
 import { calculateOverall } from '@/data/generator';
 import { getMatchdayLineup, isPlayerAvailableForMatch } from '@/utils/lineup';
-import type { MatchEvent, MatchFixture, Player, Formation, Team } from '@/types/game';
+import type { MatchEvent, MatchFixture, Formation, Team } from '@/types/game';
 import { Play, Pause, ArrowLeft, Trophy, AlertTriangle } from 'lucide-react';
 
 const DEFAULT_FORMATIONS: Record<Formation, { x: number, y: number }[]> = {
@@ -21,6 +22,20 @@ const DEFAULT_FORMATIONS: Record<Formation, { x: number, y: number }[]> = {
   ],
 };
 
+function mergeConditionTimelines(previous: Record<string, number[]>, next: Record<string, number[]>, currentMinute: number): Record<string, number[]> {
+  const merged: Record<string, number[]> = {};
+  const playerIds = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  playerIds.forEach(playerId => {
+    const oldValues = previous[playerId] ?? [];
+    const newValues = next[playerId] ?? [];
+    merged[playerId] = Array.from({ length: 91 }, (_, minute) => {
+      if (minute <= currentMinute && oldValues[minute] != null) return oldValues[minute];
+      if (newValues[minute] != null) return newValues[minute];
+      return oldValues[minute] ?? 100;
+    });
+  });
+  return merged;
+}
 export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFinish: () => void }) {
   const { teams, myTeamId, day } = useGameStore();
   const homeTeam = teams[fixture.homeTeamId];
@@ -48,6 +63,14 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
   const fullResultRef = useRef<ReturnType<typeof simulateMatch> | null>(null);
   const matchInitializedRef = useRef(false);
   const matchSavedRef = useRef<boolean>(false);
+  const conditionsAtMinute = (playerId: string, currentMinute: number): number => {
+    const timeline = fullResultRef.current?.playerConditionsByMinute?.[playerId];
+    if (!timeline) {
+      const player = [...(homeTeam?.players ?? []), ...(awayTeam?.players ?? [])].find(item => item.id === playerId);
+      return player?.condition ?? 100;
+    }
+    return timeline[Math.max(0, Math.min(90, currentMinute))] ?? timeline[0] ?? 100;
+  };
 
   // Skoru olaylardan hesapla
   const homeScore = visibleEvents.filter(e => e.type === 'goal' && e.teamId === homeTeam?.id).length;
@@ -113,12 +136,23 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
         const injuryEvent = eventsAtMinute.find(e => e.type === 'injury' && e.teamId === myTeamId);
 
         if (injuryEvent && injuryEvent.playerId) {
-          if (subsCount < 3) {
+          const injuredPlayerName = userTeam?.players.find(p => p.id === injuryEvent.playerId)?.name ?? 'Oyuncu';
+          const hasAvailableReplacement = Boolean(userTeam?.players.some(player =>
+            !userTeam.tactics.lineup.includes(player.id) &&
+            !subbedOut.has(player.id) &&
+            isPlayerAvailableForMatch(player, day)
+          ));
+
+          if (subsCount < 3 && hasAvailableReplacement) {
             setIsPlaying(false);
             setInjuredPlayerOnPitch(injuryEvent.playerId);
-            alert(`Sakatlık! ${userTeam?.players.find(p => p.id === injuryEvent.playerId)?.name} oyuna devam edemiyor. Yerine birini almalısın!`);
+            alert(`Sakatlık! ${injuredPlayerName} oyuna devam edemiyor. Yedeklerden bir oyuncu seçmelisin.`);
           } else {
-            alert(`Sakatlanan oyuncu oyuna devam edemiyor. Değişiklik hakkın kalmadığı için takım 10 kişi devam edecek.`);
+            setInjuredPlayerOnPitch(null);
+            const reason = subsCount >= 3
+              ? 'Değişiklik hakkın kalmadı.'
+              : 'Oyuna alabileceğin uygun yedek oyuncu yok.';
+            alert(`Sakatlık! ${injuredPlayerName} oyuna devam edemiyor. ${reason} Takım 10 kişi devam edecek.`);
           }
         }
 
@@ -302,7 +336,9 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
           .sort((a, b) => a.minute - b.minute);
         allEventsRef.current = combinedEvents;
         // Maç bittiğinde eski ilk simülasyon değil, değişiklik sonrası birleşik akış kaydedilsin.
-        fullResultRef.current = { ...newResult, events: combinedEvents };
+        const previousConditions = fullResultRef.current?.playerConditionsByMinute ?? {};
+        const mergedConditions = mergeConditionTimelines(previousConditions, newResult.playerConditionsByMinute, minute);
+        fullResultRef.current = { ...newResult, events: combinedEvents, playerConditionsByMinute: mergedConditions };
         setIsPlaying(true);
       }
     }, 100);
@@ -319,9 +355,9 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
           
           {/* Anında Simüle Et Butonu */}
           <button
-            disabled={isFinished}
+            disabled={isFinished || injuredPlayerOnPitch !== null}
             onClick={() => {
-              if (isFinished) return;
+              if (isFinished || injuredPlayerOnPitch !== null) return;
               if (confirm('Maç anında simüle edilecek. Onaylıyor musunuz?')) {
                 const pastEvents = allEventsRef.current.filter(event => event.minute <= minute);
                 const homePossessionMinutes = Math.round(((fullResultRef.current?.homePossessionMinutes ?? 45) / 90) * minute);
@@ -334,9 +370,12 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
                   priorEvents: pastEvents,
                 });
                 // Oynanmış dakikaları koru; yalnızca kalan süreyi yeniden simüle et.
-                fullResultRef.current = result;
-                allEventsRef.current = result.events;
-                setVisibleEvents(result.events);
+                const previousConditions = fullResultRef.current?.playerConditionsByMinute ?? {};
+                const mergedConditions = mergeConditionTimelines(previousConditions, result.playerConditionsByMinute, minute);
+                const combinedEvents = [...pastEvents, ...result.events.filter(event => event.minute > minute)].sort((a, b) => a.minute - b.minute);
+                fullResultRef.current = { ...result, events: combinedEvents, playerConditionsByMinute: mergedConditions };
+                allEventsRef.current = combinedEvents;
+                setVisibleEvents(combinedEvents);
                 setMinute(90);
                 setIsPlaying(false);
                 setIsHalfTime(false);
@@ -364,8 +403,8 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        <div className="lg:col-span-2 flex flex-col space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-6 flex-1 min-h-0">
+        <div className="flex flex-col space-y-4 min-w-0">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 relative shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex-1 text-center">
@@ -491,15 +530,19 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
                           isDragging ? 'scale-125 z-50 cursor-grabbing' : 'cursor-grab hover:scale-110'
                         }`}
                       >
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md border ${
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md border ${
                           isDragging ? 'bg-amber-500 border-white text-slate-950' : 
                           isInjured ? 'bg-red-800 border-red-500 text-white' :
                           'bg-slate-800 border-slate-600 text-emerald-400'
                         }`}>
                           {player.position}
                         </div>
+                        <div className="w-8 h-1 mt-0.5 bg-slate-700 rounded overflow-hidden">
+                          <div className={`h-full rounded ${conditionsAtMinute(player.id, minute) > 70 ? 'bg-emerald-500' : conditionsAtMinute(player.id, minute) > 40 ? 'bg-amber-400' : 'bg-red-500 animate-pulse'}`} style={{ width: `${conditionsAtMinute(player.id, minute)}%` }} />
+                        </div>
+                        <span className={`text-[8px] font-mono mt-0.5 ${conditionsAtMinute(player.id, minute) > 70 ? 'text-emerald-400' : conditionsAtMinute(player.id, minute) > 40 ? 'text-amber-400' : 'text-red-400'}`}>{Math.round(conditionsAtMinute(player.id, minute))}%</span>
                         <span className="mt-0.5 px-1 bg-slate-950/80 text-[8px] font-bold text-slate-300 rounded whitespace-nowrap border border-slate-800 shadow">
-                          {player.name.split(' ').pop()}
+                          {getShortName(player.name, 10)}
                         </span>
                       </div>
                     );
@@ -529,8 +572,11 @@ export function MatchLive({ fixture, onFinish }: { fixture: MatchFixture; onFini
                         'bg-slate-800/50 border-transparent hover:bg-slate-800 cursor-grab active:cursor-grabbing text-slate-400'
                       }`}
                     >
-                      <span className="truncate">{player.name}</span>
-                      <span className="text-emerald-500 font-mono text-[10px]">{player.position}</span>
+                      <span className="min-w-0 flex-1 truncate pr-2" title={player.name}>{getShortName(player.name, 18)}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className={`font-mono text-[10px] ${conditionsAtMinute(player.id, minute) > 70 ? 'text-emerald-400' : conditionsAtMinute(player.id, minute) > 40 ? 'text-amber-400' : 'text-red-400'}`}>{Math.round(conditionsAtMinute(player.id, minute))}%</span>
+                        <span className="text-emerald-500 font-mono text-[10px]">{player.position}</span>
+                      </span>
                     </div>
                   ))}
                 </div>

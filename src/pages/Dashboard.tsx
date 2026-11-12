@@ -3,10 +3,11 @@ import { formatGameDate } from '@/utils/date';
 import { ChevronRight, TrendingUp, Inbox, Wallet, Play, Trophy } from 'lucide-react';
 import type { MatchFixture } from '@/types/game';
 
-export function Dashboard({ onNavigate, onPlayMatch }: { onNavigate: (p: string) => void; onPlayMatch: (f: MatchFixture) => void }) {
-  const { day, season, news, teams, myTeamId, league } = useGameStore();
+export function Dashboard({ onPlayMatch }: { onNavigate: (p: string) => void; onPlayMatch: (f: MatchFixture) => void }) {
+  const { day, season, news, teams, myTeamId, leagues } = useGameStore();
   
   const myTeam = myTeamId ? teams[myTeamId] : null;
+  const league = myTeam ? leagues[myTeam.tier ?? 1] : null;
 
   // Güvenlik Kontrolü: Eğer lig veya takım yoksa yükleniyor ekranı göster (Çökmeyi önler)
   if (!myTeam || !league) {
@@ -24,9 +25,17 @@ export function Dashboard({ onNavigate, onPlayMatch }: { onNavigate: (p: string)
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <header className="flex justify-between items-end border-b border-slate-800 pb-4">
-        <div>
-          <h2 className="text-2xl font-bold">{myTeam.name}</h2>
-          <p className="text-slate-400 text-sm">{formatGameDate(day, season)}</p>
+        <div className="flex items-center gap-3">
+          {myTeam.logoUrl && <img src={myTeam.logoUrl} alt="" className="w-12 h-12 object-contain" />}
+          <div>
+            <h2 className="text-2xl font-bold">{myTeam.name}</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`text-xs px-2 py-0.5 rounded font-bold border ${(myTeam.tier ?? 1) === 1 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
+                {league.name}
+              </span>
+              <span className="text-slate-400 text-sm">{league.seasonLabel ?? `Sezon ${season}`} • {formatGameDate(day, season)}</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded border border-slate-800">

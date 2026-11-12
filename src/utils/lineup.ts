@@ -1,8 +1,11 @@
+
 import { calculateOverall } from '@/data/generator';
 import type { Player, Position, Team } from '@/types/game';
 
 export function isPlayerAvailableForMatch(player: Player, day: number): boolean {
-  return player.injuredUntilDay == null || player.injuredUntilDay <= day;
+  const injured = player.injuredUntilDay == null || player.injuredUntilDay <= day;
+  const suspended = player.suspendedUntilDay == null || player.suspendedUntilDay < day;
+  return injured && suspended;
 }
 
 export function getMatchdayLineup(team: Team, day: number): string[] {
@@ -40,3 +43,5 @@ export function getMatchdayLineup(team: Team, day: number): string[] {
 
   return lineup;
 }
+
+

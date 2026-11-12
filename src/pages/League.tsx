@@ -1,11 +1,14 @@
-﻿import { useState, useMemo } from 'react';
+﻿import { getTableName } from '@/utils/formatName';
+import { useState, useMemo } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { Trophy, Calendar, ListOrdered, Users } from 'lucide-react';
 
 type TabType = 'standings' | 'fixtures' | 'scorers' | 'assists';
 
 export function League() {
-  const { teams, myTeamId, league, day } = useGameStore();
+  const { teams, myTeamId, leagues, day } = useGameStore();
+  const myTeam = myTeamId ? teams[myTeamId] : null;
+  const league = myTeam ? leagues[myTeam.tier ?? 1] : null;
   const [activeTab, setActiveTab] = useState<TabType>('standings');
 
   // Puan Durumu Hesaplama
@@ -87,8 +90,8 @@ export function League() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <header className="flex justify-between items-end mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Süper Lig</h2>
-          <p className="text-slate-400 text-sm">Sezon {league.season} • Hafta {Math.min(34, currentWeek)}</p>
+          <h2 className="text-2xl font-bold">{league.name}</h2>
+          <p className="text-slate-400 text-sm">{league.seasonLabel ?? `Sezon ${league.season}`} • Hafta {Math.min(league.fixtures.length / Math.max(1, league.teamIds.length / 2), currentWeek)}</p>
         </div>
       </header>
 
@@ -175,7 +178,10 @@ export function League() {
                       </span>
                     </td>
                     <td className={`px-4 py-3 font-medium ${isMyTeam ? 'text-emerald-400' : 'text-slate-200'}`}>
-                      {row.team.name}
+                      <span className="flex items-center gap-2">
+                        {row.team.logoUrl && <img src={row.team.logoUrl} alt="" className="w-6 h-6 object-contain" />}
+                        {row.team.name}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center text-slate-400">{row.played}</td>
                     <td className="px-4 py-3 text-center text-slate-400">{row.won}</td>
@@ -220,8 +226,9 @@ export function League() {
                     <div key={f.id} className={`flex items-center px-4 py-2 text-sm ${
                       isMyMatch ? 'bg-emerald-500/5' : ''
                     }`}>
-                      <span className={`flex-1 text-right ${f.homeTeamId === myTeamId ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
+                      <span className={`flex-1 text-right flex items-center justify-end gap-2 ${f.homeTeamId === myTeamId ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
                         {home?.name || 'Bilinmeyen'}
+                        {home?.logoUrl && <img src={home.logoUrl} alt="" className="w-5 h-5 object-contain" />}
                       </span>
                       <span className="px-4 font-mono font-bold w-20 text-center">
                         {f.played ? (
@@ -232,7 +239,8 @@ export function League() {
                           <span className="text-slate-600">vs</span>
                         )}
                       </span>
-                      <span className={`flex-1 ${f.awayTeamId === myTeamId ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
+                      <span className={`flex-1 flex items-center gap-2 ${f.awayTeamId === myTeamId ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
+                        {away?.logoUrl && <img src={away.logoUrl} alt="" className="w-5 h-5 object-contain" />}
                         {away?.name || 'Bilinmeyen'}
                       </span>
                     </div>
@@ -265,7 +273,7 @@ export function League() {
                 return (
                   <tr key={player.id} className={`hover:bg-slate-800/30 ${isMyPlayer ? 'bg-emerald-500/5' : ''}`}>
                     <td className="px-4 py-3 text-center font-bold text-slate-400">{index + 1}</td>
-                    <td className={`px-4 py-3 font-medium ${isMyPlayer ? 'text-emerald-400' : 'text-slate-200'}`}>{player.name}</td>
+                    <td className={`px-4 py-3 font-medium ${isMyPlayer ? 'text-emerald-400' : 'text-slate-200'}`} title={player.name}>{getTableName(player.name)}</td>
                     <td className="px-4 py-3 text-center text-slate-400 text-xs">{team?.shortName}</td>
                     <td className="px-4 py-3 text-center text-slate-400">{player.stats.appearances}</td>
                     <td className={`px-4 py-3 text-center font-bold ${isMyPlayer ? 'text-emerald-400' : 'text-white'}`}>{player.stats.goals}</td>
@@ -300,7 +308,7 @@ export function League() {
                 return (
                   <tr key={player.id} className={`hover:bg-slate-800/30 ${isMyPlayer ? 'bg-emerald-500/5' : ''}`}>
                     <td className="px-4 py-3 text-center font-bold text-slate-400">{index + 1}</td>
-                    <td className={`px-4 py-3 font-medium ${isMyPlayer ? 'text-emerald-400' : 'text-slate-200'}`}>{player.name}</td>
+                    <td className={`px-4 py-3 font-medium ${isMyPlayer ? 'text-emerald-400' : 'text-slate-200'}`} title={player.name}>{getTableName(player.name)}</td>
                     <td className="px-4 py-3 text-center text-slate-400 text-xs">{team?.shortName}</td>
                     <td className="px-4 py-3 text-center text-slate-400">{player.stats.appearances}</td>
                     <td className={`px-4 py-3 text-center font-bold ${isMyPlayer ? 'text-emerald-400' : 'text-white'}`}>{player.stats.assists}</td>

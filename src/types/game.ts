@@ -1,4 +1,5 @@
-﻿export type Position =
+
+export type Position =
   | 'GK' | 'CB' | 'LB' | 'RB' | 'DM' | 'CM' | 'AM' | 'LW' | 'RW' | 'ST';
 
 export interface Attributes {
@@ -13,10 +14,14 @@ export interface Attributes {
 export interface Player {
   id: string;
   name: string;
-  age: number;
+  age: number | null;
   nationality: string;
   position: Position;
   altPositions: Position[];
+  shirtNumber?: number;
+  photoUrl?: string;
+  positionEstimated?: boolean;
+  ratingSource?: string;
   attributes: Attributes;
   condition: number;
   morale: number;
@@ -25,6 +30,7 @@ export interface Player {
   teamId: string;
   form: number;
   injuredUntilDay: number | null;
+  suspendedUntilDay: number | null;
   stats: { goals: number; assists: number; appearances: number; yellowCards: number; redCards: number };
 }
 
@@ -40,12 +46,14 @@ export interface TeamTactics {
 }
 
 export interface Team {
+  tier?: 1 | 2;
   id: string;
   name: string;
   shortName: string;
   city: string;
   color: string;
   stadium: string;
+  logoUrl?: string;
   reputation: number;
   balance: number;
   players: Player[];
@@ -81,9 +89,11 @@ export interface MatchFixture {
 }
 
 export interface League {
+  tier: 1 | 2;
   id: string;
   name: string;
   season: number;
+  seasonLabel?: string;
   teamIds: string[];
   fixtures: MatchFixture[];
 }
@@ -118,3 +128,4 @@ export interface TransferOffer {
   status: 'pending' | 'accepted' | 'rejected';
   day: number;
 }
+

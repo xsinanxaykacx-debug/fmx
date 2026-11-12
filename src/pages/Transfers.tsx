@@ -1,17 +1,19 @@
-﻿import { useState, useMemo } from 'react';
+﻿import { getTableName } from '@/utils/formatName';
+import { useState, useMemo } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { calculateOverall } from '@/data/generator';
 import type { Player, FinanceRecord } from '@/types/game';
 import { Search, ArrowRightLeft, Wallet, Check } from 'lucide-react';
 
 export function Transfers() {
-  const { teams, myTeamId, league } = useGameStore();
+  const { teams, myTeamId, leagues } = useGameStore();
   const [search, setSearch] = useState('');
   const [offerAmount, setOfferAmount] = useState<number>(0);
   const [showOfferModal, setShowOfferModal] = useState<Player | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
   const myTeam = myTeamId ? teams[myTeamId] : null;
+  const league = myTeam ? leagues[myTeam.tier ?? 1] : null;
   if (!myTeam || !league) return <div className="p-6 text-slate-400">Veri yükleniyor...</div>;
 
   // Tüm oyuncuları topla (kendi takımım hariç)
@@ -168,9 +170,9 @@ export function Transfers() {
               
               return (
                 <tr key={player.id} className="hover:bg-slate-800/50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-200">{player.name}</td>
-                  <td className="px-4 py-3 text-center text-slate-400 font-mono text-xs">{player.position}</td>
-                  <td className="px-4 py-3 text-center text-slate-400">{player.age}</td>
+                  <td className="px-4 py-3 font-medium text-slate-200"><span className="text-slate-500 font-mono text-xs mr-2">#{player.shirtNumber ?? '—'}</span><span title={player.name}>{getTableName(player.name)}</span></td>
+                  <td className="px-4 py-3 text-center text-slate-400 font-mono text-xs">{player.position}{player.positionEstimated ? '*' : ''}</td>
+                  <td className="px-4 py-3 text-center text-slate-400">{player.age ?? '—'}</td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-950 border border-slate-700 text-emerald-400 font-bold font-mono text-xs">
                       {overall}

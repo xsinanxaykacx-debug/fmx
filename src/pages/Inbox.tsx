@@ -1,5 +1,5 @@
 ﻿import { useGameStore } from '@/store/useGameStore';
-import { Mail, Trophy, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Mail, Trophy, AlertTriangle, TrendingUp, Building2 } from 'lucide-react';
 import type { NewsItem } from '@/types/game';
 
 export function Inbox() {
@@ -10,6 +10,7 @@ export function Inbox() {
       case 'match': return <Trophy className="w-5 h-5 text-emerald-400" />;
       case 'injury': return <AlertTriangle className="w-5 h-5 text-red-400" />;
       case 'finance': return <TrendingUp className="w-5 h-5 text-amber-400" />;
+      case 'board': return <Building2 className="w-5 h-5 text-amber-400" />;
       default: return <Mail className="w-5 h-5 text-slate-400" />;
     }
   };

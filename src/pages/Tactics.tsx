@@ -1,4 +1,5 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import { getShortName } from '@/utils/formatName';
+import { useState, useRef, useEffect } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { calculateOverall } from '@/data/generator';
 import { getMatchdayLineup, isPlayerAvailableForMatch } from '@/utils/lineup';
@@ -314,10 +315,10 @@ export function Tactics() {
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-lg border-2 transition-colors ${ringColor}`}>
                       {calculateOverall(player)}
                     </div>
-                    <span className={`mt-1 px-2 py-0.5 bg-slate-950/80 text-[10px] font-bold rounded whitespace-nowrap border shadow ${
+                    <span className={`mt-1 px-2 py-0.5 bg-slate-950/80 text-[10px] font-bold rounded whitespace-nowrap border shadow max-w-[104px] truncate ${
                       familiarity >= 90 ? 'text-emerald-300 border-emerald-800' : familiarity >= 70 ? 'text-amber-300 border-amber-800' : 'text-red-300 border-red-800'
                     }`}>
-                      {player.name.split(' ').pop()}
+                      {getShortName(player.name, 10)}
                     </span>
                   </div>
                 );
@@ -341,7 +342,7 @@ export function Tactics() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-mono text-slate-500 w-6">{player.position}</span>
-                    <span className="text-sm text-slate-200 truncate">{player.name}</span>
+                    <span className="text-sm text-slate-200 truncate max-w-[170px]" title={player.name}>{getShortName(player.name, 18)}</span>
                   </div>
                   <span className="text-xs font-bold text-emerald-500 bg-slate-950 px-1.5 py-0.5 rounded">
                     {calculateOverall(player)}
